@@ -1,14 +1,16 @@
 import { Injectable } from '@nestjs/common';
 import { DiscordClientServiceConfig } from 'src/discord/services/discord-client/discord-client.service';
 
+const config = require('../../../../config.json')
+
 @Injectable()
 export class ConfigService {
-
+    
     getDiscordServiceConfig(): DiscordClientServiceConfig {
         return {
-            loginToken: 'dummy',
-            clientId: 'dummy',
-            guildId: 'dummy'
+            loginToken: config.discordLoginToken,
+            clientId: config.discordClientId,
+            guildId: config.discordGuildId
         }
     }
 
