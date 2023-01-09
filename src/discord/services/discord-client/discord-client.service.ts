@@ -1,154 +1,291 @@
 import { Injectable, OnModuleInit } from '@nestjs/common';
-import { 
-    Client,
-    Events,
-    GatewayIntentBits,
-    Partials,
-    REST,
-    RequestData,
-    Interaction,
-    ChatInputCommandInteraction,
+import {
+  Client,
+  Events,
+  GatewayIntentBits,
+  Partials,
+  REST,
+  RequestData,
+  Interaction,
+  ChatInputCommandInteraction,
+  ModalSubmitInteraction,
+  MessageReaction,
+  PartialMessageReaction,
+  User,
+  PartialUser,
 } from 'discord.js';
 import { ConfigService } from 'src/config/services/config-service/config.service';
 import { LoggingService } from 'src/observability/services/logging/logging.service';
 import { waitForCondition } from 'src/utils/wait';
-import { Observable, Subject } from 'rxjs'
-import { filter } from 'rxjs/operators'
+import { Observable, Subject } from 'rxjs';
+import { filter } from 'rxjs/operators';
 
 export interface DiscordClientServiceConfig {
-    loginToken: string
-    clientId: string
-    guildId: string
+  loginToken: string;
+  clientId: string;
+  guildId: string;
+  botUserId: string;
 }
 
 @Injectable()
 export class DiscordClientService implements OnModuleInit {
+  private client: Client<true>;
+  private restClient: REST;
+  private config: DiscordClientServiceConfig;
 
-    private client: Client<true>
-    private restClient: REST
-    private config: DiscordClientServiceConfig
+  private interactions$: Subject<Interaction>;
+  private commands$: Observable<ChatInputCommandInteraction>;
+  private modalSubmissions$: Observable<ModalSubmitInteraction>;
 
-    private interactions$: Subject<Interaction>
-    private commands$: Observable<ChatInputCommandInteraction>
+  private reactions$: Subject<[MessageReaction, User, Events]>;
 
-    constructor(private logger: LoggingService,
-                private configService: ConfigService) {}
+  constructor(
+    private logger: LoggingService,
+    private configService: ConfigService,
+  ) {}
 
-    onModuleInit() {
-        this.config = this.configService.getDiscordServiceConfig()
+  onModuleInit() {
+    this.config = this.configService.getDiscordServiceConfig();
 
-        const startupClient: Client<false> = new Client({ 
-            intents: [
-                GatewayIntentBits.Guilds,
-                GatewayIntentBits.MessageContent,
-                GatewayIntentBits.GuildMessages,
-                GatewayIntentBits.GuildMessageReactions,
-            ],
-            partials: [
-                Partials.Channel,
-                Partials.GuildMember,
-                Partials.GuildScheduledEvent,
-                Partials.Message,
-                Partials.Reaction,
-                Partials.User,
-            ],
-        });
+    const startupClient: Client<false> = new Client({
+      intents: [
+        GatewayIntentBits.Guilds,
+        GatewayIntentBits.MessageContent,
+        GatewayIntentBits.GuildMessages,
+        GatewayIntentBits.GuildMessageReactions,
+      ],
+      partials: [
+        Partials.Channel,
+        Partials.GuildMember,
+        Partials.GuildScheduledEvent,
+        Partials.Message,
+        Partials.Reaction,
+        Partials.User,
+      ],
+    });
 
-        startupClient.once(Events.ClientReady, this.onClientReady.bind(this))
+    startupClient.once(Events.ClientReady, this.onClientReady.bind(this));
 
-        startupClient.login(this.config.loginToken)
+    startupClient.login(this.config.loginToken);
 
-        this.restClient = new REST().setToken(this.config.loginToken)
+    this.restClient = new REST().setToken(this.config.loginToken);
+  }
+
+  getGuildId() {
+    return this.config.guildId;
+  }
+
+  getClientId() {
+    return this.config.clientId;
+  }
+
+  getBotUserId() {
+    return this.config.botUserId;
+  }
+
+  getInteractionsStream() {
+    if (!this.interactions$) {
+      this.listenToInteractions();
+    }
+    return this.interactions$;
+  }
+
+  getCommandStream() {
+    if (!this.commands$) {
+      this.listenToCommands();
+    }
+    return this.commands$;
+  }
+
+  getModalStream() {
+    if (!this.modalSubmissions$) {
+      this.listenToModals();
+    }
+    return this.modalSubmissions$;
+  }
+
+  getReactionStream() {
+    if (!this.reactions$) {
+      this.listenToReactions();
+    }
+    return this.reactions$;
+  }
+
+  async onClientReady(client: Client<true>) {
+    this.logger.log('Discord client ready');
+    this.client = client;
+  }
+
+  async waitForClient(): Promise<void> {
+    await waitForCondition(() => !!this.client);
+  }
+
+  async getGuildManager() {
+    await this.waitForClient();
+    return this.client.guilds;
+  }
+
+  async getUserManager() {
+    await this.waitForClient();
+    return this.client.users;
+  }
+
+  async getChannelManager() {
+    await this.waitForClient();
+    return this.client.channels;
+  }
+
+  async getRoleManager(serverId: string) {
+    await this.waitForClient();
+    const guildManager = await this.getGuildManager();
+    const guild = await guildManager.fetch(serverId);
+    return guild.roles;
+  }
+
+  async getMemberManager(serverId: string) {
+    await this.waitForClient();
+    const guildManager = await this.getGuildManager();
+    const guild = await guildManager.fetch(serverId);
+    return guild.members;
+  }
+
+  private listenToInteractions() {
+    if (!!this.interactions$) {
+      this.logger.error('tried to re-initialize interactions listener');
+      throw Error('tried to re-initialize interactions listener');
     }
 
-    getGuildId() {
-        return this.config.guildId
+    this.interactions$ = new Subject();
+    this.client.on(Events.InteractionCreate, (interaction) => {
+      this.interactions$.next(interaction);
+    });
+  }
+
+  // indirection required for ts typeguard to work with rxjs
+  private isInteractionCommand(
+    interaction: Interaction,
+  ): interaction is ChatInputCommandInteraction {
+    return interaction.isChatInputCommand();
+  }
+
+  private isModalSubmission(
+    interaction: Interaction,
+  ): interaction is ModalSubmitInteraction {
+    return interaction.isModalSubmit();
+  }
+
+  private listenToCommands() {
+    if (!!this.commands$) {
+      this.logger.error('tried to re-initialize commands listener');
+      throw Error('tried to re-initialize commands listener');
     }
 
-    getClientId() {
-        return this.config.clientId
+    const source$ = this.getInteractionsStream();
+    this.commands$ = source$.pipe(filter(this.isInteractionCommand));
+  }
+
+  private listenToModals() {
+    if (!!this.modalSubmissions$) {
+      this.logger.error('tried to re-initialize commands listener');
+      throw Error('tried to re-initialize commands listener');
     }
 
-    getInteractionsStream() {
-        if (!this.interactions$) {
-            this.listenToInteractions()
-        }
-        return this.interactions$
+    const source$ = this.getInteractionsStream();
+    this.modalSubmissions$ = source$.pipe(filter(this.isModalSubmission));
+  }
+
+  private isPartialReaction(
+    reaction: MessageReaction | PartialMessageReaction,
+  ): reaction is PartialMessageReaction {
+    return reaction.partial;
+  }
+
+  private async populateReaction(
+    reaction: MessageReaction | PartialMessageReaction,
+  ): Promise<MessageReaction> {
+    if (this.isPartialReaction(reaction)) {
+      return await reaction.fetch();
+    } else {
+      return reaction;
+    }
+  }
+
+  private isPartialUser(user: User | PartialUser): user is PartialUser {
+    return user.partial;
+  }
+
+  private async populateUser(user: User | PartialUser): Promise<User> {
+    if (this.isPartialUser(user)) {
+      return await user.fetch();
+    } else {
+      return user;
+    }
+  }
+
+  private listenToReactions() {
+    if (!!this.reactions$) {
+      this.logger.error('tried to re-initialize reactions listener');
+      throw Error('tried to re-initialize reactions listener');
     }
 
-    getCommandStream() {
-        if (!this.commands$) {
-            this.listenToCommands()
-        }
-        return this.commands$
+    this.reactions$ = new Subject();
+    this.client.on(Events.MessageReactionAdd, async (reaction, user) => {
+      try {
+        const fullReaction = await this.populateReaction(reaction);
+        const fullUser = await this.populateUser(user);
+
+        this.reactions$.next([
+          fullReaction,
+          fullUser,
+          Events.MessageReactionAdd,
+        ]);
+      } catch (error) {
+        console.error(
+          'Something went wrong when fetching the reaction data:',
+          error,
+        );
+        throw error;
+      }
+    });
+
+    this.client.on(Events.MessageReactionRemove, async (reaction, user) => {
+      try {
+        const fullReaction = await this.populateReaction(reaction);
+        const fullUser = await this.populateUser(user);
+
+        this.reactions$.next([
+          fullReaction,
+          fullUser,
+          Events.MessageReactionRemove,
+        ]);
+      } catch (error) {
+        console.error(
+          'Something went wrong when fetching the reaction data:',
+          error,
+        );
+        throw error;
+      }
+    });
+  }
+
+  // This Rest api is awful.  Consider abstracting it away further somewhere
+  async sendRestCall(route: `/${string}`, data: RequestData) {
+    try {
+      this.logger.log(`Sending rest call at: ${route}`);
+      await this.restClient.put(route, data);
+    } catch (e) {
+      this.logger.error(e);
+      throw e;
     }
-
-    async onClientReady(client: Client<true>) {
-        this.logger.log('Discord client ready')
-        this.client = client
-    }
-
-    async waitForClient(): Promise<void> {
-        await waitForCondition(() => !!this.client)
-    }
-
-    async getChannelManager() {
-        await this.waitForClient()
-        return this.client.channels
-    }
-    
-    private listenToInteractions() {
-        if (!!this.interactions$) {
-            this.logger.error('tried to re-initialize interactions listener')
-            throw Error('tried to re-initialize interactions listener')
-        }
-
-        this.interactions$ = new Subject()
-        this.client.on(Events.InteractionCreate, interaction => {
-            this.interactions$.next(interaction)
-        })
-    }
-
-    // indirection required for ts typeguard to work with rxjs
-    private isInteractionCommand(interaction: Interaction): interaction is ChatInputCommandInteraction {
-        return interaction.isChatInputCommand()
-    }
-
-    private listenToCommands() {
-        if (!!this.commands$) {
-            this.logger.error('tried to re-initialize commands listener')
-            throw Error('tried to re-initialize commands listener')
-        }
-
-        let source$ = this.getInteractionsStream()
-        this.commands$ = source$.pipe(
-            filter(this.isInteractionCommand)
-        )
-    }
-
-    // This Rest api is awful.  Consider abstracting it away further somewhere
-    async sendRestCall(route: `/${string}`, data: RequestData) {
-        try {
-            this.logger.log(`Sending rest call at: ${route}`)
-            await this.restClient.put(route, data)
-        } catch (e) {
-            this.logger.error(e)
-            throw e
-        }
-    }
-
-
-
+  }
 }
-
-
 
 // // Require the necessary discord.js classes
 // const { Client, Events, GatewayIntentBits, EmbedBuilder } = require('discord.js');
 // const { token } = require('./config.json');
 
 // // Create a new client instance
-// const client = new Client({ 
+// const client = new Client({
 //     intents: [GatewayIntentBits.Guilds, GatewayIntentBits.MessageContent, GatewayIntentBits.GuildMessages, GatewayIntentBits.GuildMessageReactions],
 //     partials: ['CHANNEL', 'GUILD_MEMBER', 'GUILD_SCHEDULED_EVENT', 'MESSAGE', 'REACTION', 'USER'] // all partials
 // });
@@ -205,7 +342,7 @@ export class DiscordClientService implements OnModuleInit {
 //     // collector.on('collect', (reaction, user) => {
 //     //     console.log(`Collected ${reaction.emoji.name} from ${user.tag}`);
 //     // });
-    
+
 //     // collector.on('end', collected => {
 //     //     console.log(`Collected ${collected.size} items`);
 //     //     process.exit()
@@ -231,8 +368,6 @@ export class DiscordClientService implements OnModuleInit {
 // // 	// The reaction is now also fully available and the properties will be reflected accurately:
 // // 	console.log(`${reaction.count} user(s) have given the same reaction to this message!`);
 // // });
-
-
 
 // // Log in to Discord with your client's token
 // client.login(token);

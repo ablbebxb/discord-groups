@@ -9,7 +9,9 @@ describe('CommandRegistrationService', () => {
       providers: [CommandRegistrationService],
     }).compile();
 
-    service = module.get<CommandRegistrationService>(CommandRegistrationService);
+    service = module.get<CommandRegistrationService>(
+      CommandRegistrationService,
+    );
   });
 
   it('should be defined', () => {

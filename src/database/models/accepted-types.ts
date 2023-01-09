@@ -1,1 +1,1 @@
-export type AcceptedTypes = string | string[]
+export type AcceptedTypes = string | string[];

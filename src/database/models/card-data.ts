@@ -1,20 +1,24 @@
-import { AcceptedTypes } from './'
-import { Dict } from '../../type-utils'
+import { AcceptedTypes } from './';
+import { Dict } from '../../utils';
 
 export interface CardData extends Dict<AcceptedTypes> {
+  entityId?: string;
 
-    entityId: string
+  messageId?: string;
 
-    messageId: string
+  cardId?: string;
 
-    userTags: string[]
+  serverId: string;
 
-    roleTag: string
+  userIds: string[];
 
-    gameImageSrc: string
+  roleTag: string;
 
-    description: string
+  roleId: string;
 
-    title: string
+  gameImageSrc: string;
 
+  description: string;
+
+  title: string;
 }

@@ -4,8 +4,7 @@ import { AddCardCommand } from './add-card.command';
 describe('RolesService', () => {
   let service: AddCardCommand;
 
-  beforeEach(async () => {
-  });
+  beforeEach(async () => {});
 
   it('should be defined', () => {
     expect(service).toBeDefined();

@@ -1,2 +1,2 @@
-export * from './accepted-types'
-export * from './card-data'
+export * from './accepted-types';
+export * from './card-data';
