@@ -27,8 +27,8 @@ export class GameCardService {
     if (!(await this.firestore.exists(doc))) {
       await this.firestore.create(doc, data);
     }
-    const render = await doc.get();
-    return render.data() as CardData;
+    const snapshot = await doc.get()
+    return snapshot.data() as CardData
   }
 
   async update(data: CardData) {

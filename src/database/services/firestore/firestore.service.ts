@@ -5,7 +5,7 @@ import {
 } from '@google-cloud/firestore';
 import { Injectable } from '@nestjs/common';
 
-import { Dict } from '../../../utils';
+import { Dict, waitForCondition } from '../../../utils';
 import { AcceptedTypes } from '../../models/accepted-types';
 
 @Injectable()
@@ -14,7 +14,7 @@ export class FirestoreService {
 
   constructor() {
     this.db = new Firestore({
-      keyFilename: './key.json',
+      keyFilename: '/app/nest-bot/key.json',
     });
   }
 
@@ -49,8 +49,13 @@ export class FirestoreService {
     doc: DocumentReference | string,
     kvp: Dict<AcceptedTypes>,
   ): Promise<void> {
-    doc = await this.interpolateDoc(doc);
-    doc.create(kvp);
+    const interpolatedDoc = await this.interpolateDoc(doc);
+    await interpolatedDoc.create(kvp);
+    await waitForCondition(async () => {
+      const snapshot = await interpolatedDoc.get()
+      const data = await snapshot.data()
+      return data != undefined
+    })
   }
 
   async update(id: string, kvp: Dict<AcceptedTypes>): Promise<void>;

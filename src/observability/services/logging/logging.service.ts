@@ -1,12 +1,24 @@
-import { Injectable } from '@nestjs/common';
+import { ConsoleLogger, Injectable } from '@nestjs/common';
+import { createWriteStream, WriteStream, mkdirSync } from 'fs'
 
 @Injectable()
-export class LoggingService {
-  log(message: string) {
-    console.log(message);
+export class LoggingService extends ConsoleLogger {
+
+  private logStream: WriteStream
+
+  constructor() {
+    super()
+    this.logStream = createWriteStream('/app/logs/out.log', { flags: 'w' })
   }
 
-  error(message: string, e?: Error) {
-    console.error(message, e);
+  log(message: string) {
+    console.log(message)
+    this.logStream.write(message + '\n')
+  }
+
+  error(message: any, stack?: string, context?: string) {
+    console.error(message, stack);
+    this.logStream.write(message + '\n')
+    this.logStream.write(stack + '\n')
   }
 }

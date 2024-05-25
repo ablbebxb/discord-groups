@@ -117,7 +117,7 @@ export class DiscordClientService implements OnModuleInit {
   }
 
   async waitForClient(): Promise<void> {
-    await waitForCondition(() => !!this.client);
+    await waitForCondition(async () => !!this.client);
   }
 
   async getGuildManager() {

@@ -30,7 +30,9 @@ export class ComponentRootService {
   }
 
   async render(serverId: string) {
+    this.logger.log(`Refreshing server ${serverId}`)
     const cards = await this.gameCardService.getByServerId(serverId);
+    this.logger.log(`Cards to render ${cards.length}`)
     const metadata = await this.metadataService.getMetadata(serverId);
     await this.gameChannelService.render(metadata.gameGroupChannelId, cards);
     await this.reactionService.refreshMessageIds();

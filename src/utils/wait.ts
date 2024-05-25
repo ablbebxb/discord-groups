@@ -1,5 +1,5 @@
-export async function waitForCondition(condition: () => boolean) {
-  if (condition()) {
+export async function waitForCondition(condition: () => Promise<boolean>) {
+  if (await condition()) {
     return;
   }
 

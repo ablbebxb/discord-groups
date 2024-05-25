@@ -3,6 +3,7 @@ import { CardData } from 'src/database/models';
 import { ChannelService } from 'src/discord/services/channel/channel.service';
 import { GameCardService } from '../game-card/game-card.service';
 import { GameCardService as GameCardDataService } from '../../../database/services/game-card/game-card.service';
+import { LoggingService } from 'src/observability/services/logging/logging.service';
 
 @Injectable()
 export class GameChannelService {
@@ -10,6 +11,7 @@ export class GameChannelService {
     private gameCardService: GameCardService,
     private gameCardDataService: GameCardDataService,
     private channelService: ChannelService,
+    private logger: LoggingService,
   ) {}
 
   async render(channelId: string, cards: CardData[]) {
@@ -27,11 +29,19 @@ export class GameChannelService {
         await this.gameCardDataService.update(card);
       }
 
-      const message = await this.channelService.getMessage(
-        channel,
-        card.messageId,
-      );
-      await this.gameCardService.render(message, card);
+      let message
+      try {
+        message = await this.channelService.getMessage(
+          channel,
+          card.messageId,
+        );
+      } catch(e) {
+        this.logger.error(`Failed to fetch message with id ${card.messageId} for card ${card.title}`, e.stack)
+      }
+
+      if (!!message) {
+        await this.gameCardService.render(message, card);
+      }
     }
   }
 }
